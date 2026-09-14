@@ -1,4 +1,3 @@
-import { Resend } from "resend";
 import { eq, inArray } from "drizzle-orm";
 import { users } from "../../drizzle/schema";
 import { notifyOwner } from "../_core/notification";
@@ -45,7 +44,6 @@ export function notifyShortVisit(managerName: string, branchName: string | null,
 }
 
 // ── 📧 إرسال إيميل للأدمن عبر Resend REST API (fire-and-forget) ──────────────
-const resend = new Resend(process.env.RESEND_API_KEY);
 const RESEND_FROM = "onboarding@resend.dev"; // يمكن تغييره لدومين مخصص
 
 async function sendExternalMissionEmail(
