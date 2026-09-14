@@ -1,0 +1,61 @@
+name: Build iOS App
+
+# ✅ تشغيل يدوي فقط — سيرفرات الماك بتتحسب ×10 من رصيد الدقائق المجانية
+# شغّلها من تبويب Actions → Build iOS App → Run workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # pnpm بيتقرأ تلقائياً من packageManager في package.json
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Web App
+        run: pnpm run build
+
+      - name: Sync Capacitor iOS (copy web assets + pod install)
+        run: npx cap sync ios
+
+      # ⚠️ ملاحظة: .env مش موجود على GitHub (gitignored) — وده مقصود.
+      # البناء هيستخدم الرابط الافتراضي للإنتاج: https://branch-visit-tracker.up.railway.app
+
+      - name: Build iOS App (Unsigned)
+        run: |
+          cd ios/App
+          # Build without Code Signing so we can sideload/sign it later
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            -sdk iphoneos \
+            clean build \
+            CONFIGURATION_BUILD_DIR="$(pwd)/build"
+
+      - name: Create IPA payload
+        run: |
+          cd ios/App/build
+          mkdir Payload
+          cp -R -p App.app Payload/
+          zip -qr app.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BranchTracker-iOS
+          path: ios/App/build/app.ipa
+          retention-days: 30

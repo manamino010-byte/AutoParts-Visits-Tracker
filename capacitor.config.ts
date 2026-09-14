@@ -1,0 +1,71 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+// ── ⚡ Live Reload (للمطوير فقط) ──────────────────────────────────────────────
+// لو عايز أي تعديل في الكود يظهر فوراً على موبايلك من غير rebuild:
+//   1. شغّل السيرفر:  pnpm dev
+//   2. اعرف IP جهازك: ipconfig  (خد رقم IPv4 زي 192.168.1.8)
+//   3. نفذ:           $env:CAP_DEV_SERVER_URL="http://<الـIP>:3000"; npx cap sync android
+//   4. اعمل build للـ APK مرة واحدة بس وسطبها
+// بعد كده: طالمآ الموبايل والكمبيوتر على نفس الواي فاي — أي Save هيظهر على الموبايل فوراً!
+//
+// ⚠️ مهم جداً: قبل بناء نسخة الموظفين النهائية، متحطش المتغير ده — سيبه فاضي
+//    والـ APK هتشتغل عادي من الملفات المدمجة فيها.
+const devServerUrl = process.env.CAP_DEV_SERVER_URL;
+
+const config: CapacitorConfig = {
+  appId: 'com.branchtracker.app',
+  appName: 'Branch Tracker',
+  webDir: 'dist/public',
+  // Use localhost for WebView — important for cookie handling
+  server: {
+    androidScheme: 'https',
+    // Allow cleartext traffic to the API server during development
+    cleartext: true,
+    // Live Reload: بيشتغل فقط لو المتغير متحدد — وإلا التطبيق عادي من الـ bundle
+    ...(devServerUrl ? { url: devServerUrl } : {}),
+  },
+  android: {
+    // Allow navigation to the API server
+    allowMixedContent: true,
+  },
+  plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
+    CapacitorCookies: {
+      enabled: true,
+    },
+    BackgroundGeolocation: {
+      // إشعار دائم في الـ notification bar أثناء التتبع
+      // ده إلزامي على Android 8+ عشان الـ Foreground Service يشتغل
+      notificationTitle: 'تتبع الموقع نشط',
+      notificationText: 'Branch Tracker يراقب موقعك أثناء العمل',
+      notificationIconColor: '#1a6b3a',
+
+      // أقل تكرار ممكن للـ updates عشان نوفر البطارية
+      // 10 ثواني كافية لـ geofencing
+      interval: 10000,
+      fastestInterval: 5000,
+
+      // دقة عالية — لازم للـ geofencing
+      priority: 'HIGH_ACCURACY',
+
+      // لو الجهاز وقف تماماً، مش محتاج updates
+      activitiesInterval: 10000,
+
+      // ده بيخلي الـ service يرجع تلقائياً لو الـ OS قفله
+      stopOnTerminate: false,
+      startOnBoot: true,
+
+      // مهم على Xiaomi/OPPO/Samsung
+      // بيمنع الـ OS من تعليق الـ service
+      disableElasticity: true,
+
+      // تجاهل تحديثات الـ GPS لو الدقة أقل من 100m
+      // بيقلل الضوضاء في وسط المدن
+      desiredAccuracy: 10,
+    },
+  },
+};
+
+export default config;
