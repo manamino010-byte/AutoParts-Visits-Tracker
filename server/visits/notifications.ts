@@ -1,3 +1,4 @@
+import { Resend } from "resend";
 import { eq, inArray } from "drizzle-orm";
 import { users } from "../../drizzle/schema";
 import { notifyOwner } from "../_core/notification";
@@ -110,7 +111,7 @@ async function sendExternalMissionEmail(
       fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${RESEND_API_KEY}`,
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
