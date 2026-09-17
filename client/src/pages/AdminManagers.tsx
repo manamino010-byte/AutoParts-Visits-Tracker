@@ -47,6 +47,9 @@ function AssignBranchesDialog({
   const toggle = (id: number) => {
     setSelectedIds((prev) => {
       const base = prev ?? (currentIds as number[]);
+      if (manager?.userRole === "branch_manager") {
+        return base.includes(id) ? [] : [id];
+      }
       return base.includes(id) ? base.filter((b) => b !== id) : [...base, id];
     });
   };
@@ -317,7 +320,7 @@ export default function AdminManagers() {
   const users = usersList as any[];
   const existingManagerUserIds = new Set(managers.map((m) => m.userId));
   const availableUsers = users.filter(
-    (u) => u.role === "user" && !existingManagerUserIds.has(u.id)
+    (u) => ["user", "area_manager", "branch_manager"].includes(u.role) && !existingManagerUserIds.has(u.id)
   );
   const activeCount = managers.filter((m) => m.isActive === "yes").length;
 

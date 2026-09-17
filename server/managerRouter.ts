@@ -201,6 +201,20 @@ export const managerRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
 
+      // ✅ Fetch the manager to check their role
+      const managerResult = await db
+        .select({ userRole: users.role })
+        .from(managers)
+        .innerJoin(users, eq(managers.userId, users.id))
+        .where(eq(managers.id, input.managerId))
+        .limit(1);
+
+      if (!managerResult[0]) throw new Error("Manager not found");
+
+      if (managerResult[0].userRole === "branch_manager" && input.branches.length > 1) {
+        throw new Error("لا يمكن تعيين أكثر من فرع واحد لمدير الفرع.");
+      }
+
       // ✅ تحقق إن كل branchId موجود فعلاً في جدول branches قبل الإدخال
       if (input.branches.length > 0) {
         const branchIds = input.branches.map((b) => b.branchId);
@@ -391,4 +405,80 @@ export const managerRouter = router({
       
       return logs;
     }),
+
+  // GET — area_manager: get branch managers subordinate to the current area manager
+  getSubordinateBranchManagers: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    // 1. Get current manager ID
+    const currentManagerResult = await db
+      .select({ id: managers.id })
+      .from(managers)
+      .where(eq(managers.userId, ctx.user!.id))
+      .limit(1);
+
+    if (!currentManagerResult[0]) return [];
+    const areaManagerId = currentManagerResult[0].id;
+
+    // 2. Get branches assigned to this area manager
+    const areaBranches = await db
+      .select({ branchId: managerBranches.branchId })
+      .from(managerBranches)
+      .where(eq(managerBranches.managerId, areaManagerId));
+
+    if (areaBranches.length === 0) return [];
+    const branchIds = areaBranches.map((b) => b.branchId);
+
+    // 3. Get branch_managers assigned to any of these branches
+    const subordinates = await db
+      .select({
+        managerId: managers.id,
+        name: users.name,
+        photoUrl: managers.photoUrl,
+        phone: managers.phone,
+        branchId: managerBranches.branchId,
+        branchName: branches.name,
+      })
+      .from(managers)
+      .innerJoin(users, eq(managers.userId, users.id))
+      .innerJoin(managerBranches, eq(managerBranches.managerId, managers.id))
+      .innerJoin(branches, eq(managerBranches.branchId, branches.id))
+      .where(
+        and(
+          eq(users.role, "branch_manager"),
+          inArray(managerBranches.branchId, branchIds),
+          eq(managers.isActive, "yes")
+        )
+      );
+
+    // 4. For each subordinate, check if they have an active visit (checked_in)
+    if (subordinates.length === 0) return [];
+    
+    const subManagerIds = subordinates.map((s) => s.managerId);
+    
+    const activeVisits = await db
+      .select({
+        managerId: visits.managerId,
+        checkInAt: visits.checkInAt,
+        branchId: visits.branchId,
+      })
+      .from(visits)
+      .where(
+        and(
+          inArray(visits.managerId, subManagerIds),
+          eq(visits.status, "checked_in")
+        )
+      );
+
+    const activeVisitsMap = new Map();
+    for (const v of activeVisits) {
+      activeVisitsMap.set(v.managerId, v);
+    }
+
+    return subordinates.map((s) => ({
+      ...s,
+      activeVisit: activeVisitsMap.get(s.managerId) || null,
+    }));
+  }),
 });

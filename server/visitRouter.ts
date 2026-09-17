@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { eq, and, or, ne, gte, lte, desc, count, sql } from "drizzle-orm";
 import { router, protectedProcedure, adminProcedure, superAdminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
@@ -634,7 +634,7 @@ export const visitRouter = router({
               notifyMockedCheckInOffline(managerName, branch.name, checkInTime, isTeleporting);
             }
 
-            localToServerId.set(ci.localId, inserted.id);
+            localToServerId.set(ci.localId, inserted[0].id);
             synced++;
           } catch (err) {
             console.error("[syncOfflineVisits] checkIn error:", err);

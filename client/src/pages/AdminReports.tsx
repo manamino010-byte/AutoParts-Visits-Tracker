@@ -579,7 +579,7 @@ export default function AdminReports() {
     offset: 0,
   };
   const { data, isLoading } = trpc.visit.adminList.useQuery(queryInput);
-  const visits: Visit[] = (data?.items ?? []) as Visit[];
+  const visits: Visit[] = (data?.items ?? []) as unknown as Visit[];
   const dayGroups = useMemo(() => groupVisits(visits, locale), [visits, locale]);
 
   const checkedOut = visits.filter((v) => v.checkOutAt);
