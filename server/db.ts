@@ -35,7 +35,7 @@ export async function getDb(): Promise<MySql2Database<typeof schema> | null> {
     if (!_pool) _pool = createPool();
     if (_pool) {
       try {
-        _db = drizzle(_pool, { schema });
+        _db = drizzle(_pool, { schema, mode: "default" });
         console.log("[Database] ✅ Pool connected");
       } catch (error) {
         console.warn("[Database] Failed to init drizzle:", error);
