@@ -19,6 +19,7 @@ import AdminLiveTracking from "./pages/AdminLiveTracking";
 import SyncPage from "./pages/SyncPage";
 import ManagerReports from "./pages/ManagerReports";
 import AreaManagerSchedule from "./pages/AreaManagerSchedule";
+import AreaManagerPanel from "./pages/AreaManagerPanel";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { useGeofence } from "./hooks/useGeofence";
 import { LocationPermissionGuide } from "./components/LocationPermissionGuide";
@@ -104,6 +105,14 @@ function ProtectedRouter() {
 
   // ── Area Manager / Branch Manager: dark mobile layout ─────────────────────
   if (isFieldManager) {
+    // لوحة المتابعة — area_manager فقط، لها layout خاص بها (admin-style)
+    if (user.role === "area_manager" || user.role === "user") {
+      const panelMatch = typeof window !== "undefined" && window.location.pathname.startsWith("/panel");
+      if (panelMatch) {
+        return <AreaManagerPanel />;
+      }
+    }
+
     const managerRoutes = (
       <Switch>
         <Route path="/" component={ManagerDashboard} />
@@ -114,6 +123,8 @@ function ProtectedRouter() {
         <Route path="/sync" component={SyncPage} />
         {/* جدول الزيارات الأسبوعي — متاح لمدير المنطقة فقط، الصفحة تتحقق من الدور */}
         <Route path="/schedule" component={AreaManagerSchedule} />
+        {/* لوحة المتابعة route — يُعالج في الأعلى قبل هذه النقطة */}
+        <Route path="/panel" component={AreaManagerPanel} />
         <Route component={NotFound} />
       </Switch>
     );
