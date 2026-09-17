@@ -6,6 +6,7 @@ import { publicProcedure, router, adminProcedure, superAdminProcedure } from "./
 import { branchRouter } from "./branchRouter";
 import { managerRouter } from "./managerRouter";
 import { visitRouter } from "./visitRouter";
+import { scheduleRouter } from "./scheduleRouter";
 import * as db from "./db";
 import { hashPassword } from "./auth";
 import { TRPCError } from "@trpc/server";
@@ -34,8 +35,10 @@ export const appRouter = router({
 
   users: router({
     // قائمة كل المستخدمين
-    list: adminProcedure.query(async () => {
-      const users = await db.listUsers();
+    // الأدمن العادي لا يرى الـ superadmin — يتصفى في db.listUsers بناءً على دور المتصدي
+    list: adminProcedure.query(async ({ ctx }) => {
+      const isSuperAdmin = ctx.user?.role === 'superadmin';
+      const users = await db.listUsers(isSuperAdmin);
       // نبعت للأدمن حالة الربط فقط بدون البصمة نفسها
       return users.map((u) => ({
         ...u,
@@ -53,11 +56,17 @@ export const appRouter = router({
         password: z.string().min(6),
         name: z.string().optional(),
         email: z.string().email().optional(),
-        role: z.enum(["user", "admin"]).default("user"),
+        // الأدمن العادي يقدر يخلق area_manager أو branch_manager فقط
+        // السوبر أدمن يقدر يخلق admin كمان
+        role: z.enum(["area_manager", "branch_manager", "admin", "user"]).default("area_manager"),
         // نظام التشغيل — ios يُجبر على manual تلقائياً
         os: z.enum(["android", "ios"]).default("android"),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        // الأدمن العادي لا يقدر يخلق admin آخر
+        if (input.role === 'admin' && ctx.user?.role !== 'superadmin') {
+          throw new TRPCError({ code: "FORBIDDEN", message: "فقط السوبر أدمن يمكنه إنشاء أدمن" });
+        }
         const existing = await db.getUserByUsername(input.username);
         if (existing) throw new TRPCError({ code: "CONFLICT", message: "اسم المستخدم موجود بالفعل" });
         const passwordHash = await hashPassword(input.password);
@@ -84,15 +93,21 @@ export const appRouter = router({
         password: z.string().min(6).optional(),
         name: z.string().optional(),
         email: z.string().email().optional().or(z.literal("")),
-        role: z.enum(["user", "admin"]).optional(),
+        role: z.enum(["area_manager", "branch_manager", "admin", "user"]).optional(),
         os: z.enum(["android", "ios"]).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { id, password, ...rest } = input;
 
         // تأكد إن المستخدم موجود
         const existing = await db.getUserById(id);
         if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
+
+        // الأدمن العادي لا يقدر يعدّل superadmin أو يرفع دور لـ admin
+        if (ctx.user?.role !== 'superadmin') {
+          if (existing.role === 'superadmin') throw new TRPCError({ code: "FORBIDDEN", message: "لا يمكن تعديل السوبر أدمن" });
+          if (rest.role === 'admin') throw new TRPCError({ code: "FORBIDDEN", message: "فقط السوبر أدمن يمكنه رفع الدور لأدمن" });
+        }
 
         // لو غيّر الـ username تأكد مش موجود عند حد تاني
         if (rest.username && rest.username !== existing.username) {
@@ -211,6 +226,7 @@ export const appRouter = router({
   branch: branchRouter,
   manager: managerRouter,
   visit: visitRouter,
+  schedule: scheduleRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -105,21 +105,30 @@ async function sendExternalMissionEmail(
 
   // إرسال لكل الأدمن (fire-and-forget)
   await Promise.allSettled(
-    adminEmails.map(email =>
-      fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: RESEND_FROM,
-          to: [email],
-          subject: `🧭 مأمورية خارجية جديدة — ${managerName}`,
-          html,
-        }),
-      }).catch(err => console.error("[Resend] Email failed:", err))
-    )
+    adminEmails.map(async (email) => {
+      try {
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [email],
+            subject: `🧭 مأمورية خارجية جديدة — ${managerName}`,
+            html,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.text();
+          console.error(`[Resend] Failed to send email to ${email}. Status: ${response.status}, Error: ${errorData}`);
+        }
+      } catch (err) {
+        console.error(`[Resend] Exception sending email to ${email}:`, err);
+      }
+    })
   );
 }
 

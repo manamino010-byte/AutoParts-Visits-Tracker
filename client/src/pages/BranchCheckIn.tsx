@@ -8,12 +8,23 @@ import { Loader2 } from "lucide-react";
 import { MapView, MapMarker, GeofenceCircle, type MapCenter } from "@/components/Map";
 import { Capacitor } from "@capacitor/core";
 import NotesModal, { type NotesModalType } from "./NotesModal";
+import CheckoutChecklistModal from "./CheckoutChecklistModal";
+import { useAuth } from "@/_core/hooks/useAuth";
 import "./BranchCheckIn.css";
 
 export default function BranchCheckIn() {
+  const { user } = useAuth();
+  const isBranchManager = user?.role === 'branch_manager';
   const [view, setView] = useState<"list" | "map">("map");
   const [fly, setFly] = useState<MapCenter | null>(null);
   const didAutoFlyRef = useRef(false);
+
+  // ── حالة مودال الـ Checklist ─────────────────────────────────────────────────
+  const [checklistModal, setChecklistModal] = useState<{
+    open: boolean;
+    visitId: number | null;
+    branchName?: string;
+  }>({ open: false, visitId: null });
 
   const [notesModalState, setNotesModalState] = useState<{
     isOpen: boolean;
@@ -36,6 +47,33 @@ export default function BranchCheckIn() {
   const { data: assignedBranches = [] } = trpc.manager.getMyBranches.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
+
+  // ── مدير الفرع: تقييم معلق من خروج تلقائي سابق ──────────────────────────────
+  const { data: pendingChecklist, refetch: refetchPending } = trpc.visit.getPendingChecklist.useQuery(undefined, {
+    staleTime: 30_000,
+  });
+
+  // إظهار تذكير التقييم المعلق تلقائياً لو وُجد
+  useEffect(() => {
+    if (pendingChecklist && !checklistModal.open) {
+      toast.warning(
+        `🔔 لم تُكمل تقرير زيارة "${pendingChecklist.branchName || 'الزيارة السابقة'}" — اضغط هنا لإتمامه`,
+        {
+          duration: 8000,
+          action: {
+            label: "إتمام التقرير",
+            onClick: () =>
+              setChecklistModal({
+                open: true,
+                visitId: pendingChecklist.id,
+                branchName: pendingChecklist.branchName ?? undefined,
+              }),
+          },
+        }
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingChecklist?.id]);
   // ✅ getActive بدل myHistory{limit:5} — استعلام أخف بيرجّع الزيارة النشطة مباشرة (أو null)
   const { data: activeVisit, refetch: refetchVisits } = trpc.visit.getActive.useQuery(undefined, {
     staleTime: 30_000,
@@ -174,6 +212,15 @@ export default function BranchCheckIn() {
         });
         toast.success("🔴 تم تسجيل خروجك — سلامات!");
         refetchVisits();
+
+        // ── بعد الخروج اليدوي: افتح مودال التقييم الإلزامي مباشرة ──────────
+        setNotesModalState({ isOpen: false, type: "check_in_branch" });
+        setChecklistModal({
+          open: true,
+          visitId: activeVisit.id,
+          branchName: activeVisit.branchName ?? activeVisit.branchName ?? undefined,
+        });
+        return;
       }
       setNotesModalState({ isOpen: false, type: "check_in_branch" });
     } catch (err: any) {
@@ -446,6 +493,24 @@ export default function BranchCheckIn() {
         onClose={() => setNotesModalState({ ...notesModalState, isOpen: false })}
         onSubmit={submitModal}
         isPending={checkInMutation.isPending || checkOutMutation.isPending}
+      />
+
+      {/* ── مودال التقييم الإلزامي (Checkout Checklist) ── */}
+      <CheckoutChecklistModal
+        open={checklistModal.open}
+        visitId={checklistModal.visitId}
+        branchName={checklistModal.branchName}
+        onClose={() => {
+          // المدير لا يستطيع إغلاق المودال بدون تقييم في حالة الخروج اليدوي
+          // لكن إذا كان تذكيراً من خروج تلقائي يمكنه التأجيل (سيظهر مجدداً)
+          toast.warning("⚠ يرجى إتمام تقرير الزيارة في أقرب وقت");
+          setChecklistModal({ open: false, visitId: null });
+        }}
+        onSuccess={() => {
+          setChecklistModal({ open: false, visitId: null });
+          refetchVisits();
+          refetchPending();
+        }}
       />
 
     </>

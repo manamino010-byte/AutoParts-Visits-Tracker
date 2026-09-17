@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ type CreateForm = {
   password: string;
   name: string;
   email: string;
-  role: "user" | "admin";
+  role: "area_manager" | "branch_manager" | "admin" | "user";
   os: "android" | "ios";
 };
 type EditForm = CreateForm & { id: number };
@@ -35,6 +35,24 @@ const emptyCreate: CreateForm = {
   role: "user",
   os: "android",
 };
+
+// Role display constants — used for badges in user list
+const ROLE_LABELS: Record<string, string> = {
+  superadmin: "سوبر أدمن",
+  admin: "أدمن",
+  area_manager: "مدير منطقة",
+  branch_manager: "مدير فرع",
+  user: "مدير منطقة",
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  superadmin: "#a855f7",
+  admin: "#ef4444",
+  area_manager: "#0fa5f8",
+  branch_manager: "#10b981",
+  user: "#0fa5f8",
+};
+
 
 // ─── Shared Field ─────────────────────────────────────────────────────────────
 function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {
@@ -107,19 +125,21 @@ function AdminInput({
 function RoleSelector({
   value,
   onChange,
+  isSuperAdmin = false,
 }: {
-  value: "user" | "admin";
-  onChange: (v: "user" | "admin") => void;
+  value: string;
+  onChange: (v: any) => void;
+  isSuperAdmin?: boolean;
 }) {
-  const { t } = useLang();
+  const options = [
+    { role: "area_manager", label: "مدير منطقة", icon: "manage_accounts", color: "#0fa5f8" },
+    { role: "branch_manager", label: "مدير فرع", icon: "store", color: "#10b981" },
+    ...(isSuperAdmin ? [{ role: "admin", label: "أدمن", icon: "shield", color: "#ef4444" }] : []),
+  ];
+
   return (
     <div className="grid grid-cols-2 gap-2">
-      {(
-        [
-          { role: "user", label: t("users.roleOptionManager"), icon: "manage_accounts" },
-          { role: "admin", label: t("users.roleOptionAdmin"), icon: "shield" },
-        ] as const
-      ).map(({ role, label, icon }) => {
+      {options.map(({ role, label, icon, color }) => {
         const active = value === role;
         return (
           <button
@@ -128,9 +148,9 @@ function RoleSelector({
             onClick={() => onChange(role)}
             className="flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer"
             style={{
-              background: active ? "var(--adm-accent)" : "var(--adm-bg)",
-              borderColor: active ? "var(--adm-accent)" : "var(--adm-border)",
-              color: active ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
+              background: active ? `${color}22` : "var(--adm-bg)",
+              borderColor: active ? color : "var(--adm-border)",
+              color: active ? color : "var(--adm-text-2)",
             }}
           >
             <span
@@ -452,8 +472,10 @@ export default function AdminUsers() {
           </div>
         ) : (
           <div>
-            {allUsers.map((u: any) => {
-              const isAdminUser = u.role === "admin";
+          {allUsers.map((u: any) => {
+              const isAdminUser = u.role === "admin" || u.role === "superadmin";
+              const roleLabel = ROLE_LABELS[u.role] ?? u.role;
+              const roleColor = ROLE_COLORS[u.role] ?? "#64748b";
               return (
                 <div
                   key={u.id}
@@ -465,8 +487,9 @@ export default function AdminUsers() {
                     <div
                       className="w-20 h-20 rounded-full flex items-center justify-center font-bold text-[28px] flex-shrink-0"
                       style={{
-                        background: isAdminUser ? "var(--adm-accent)" : "var(--adm-bg)",
-                        color: isAdminUser ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
+                        background: `${roleColor}22`,
+                        color: roleColor,
+                        border: `2px solid ${roleColor}44`,
                       }}
                     >
                       {(u.name ?? u.username).charAt(0).toUpperCase()}
@@ -485,14 +508,17 @@ export default function AdminUsers() {
                         >
                           @{u.username}
                         </span>
+                        {/* Role badge — dynamic color per role */}
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                           style={{
-                            background: isAdminUser ? "var(--adm-bg)" : "var(--adm-green-soft)",
-                            color: isAdminUser ? "var(--adm-text-1)" : "var(--adm-green)",
+                            background: `${roleColor}18`,
+                            color: roleColor,
+                            border: `1px solid ${roleColor}33`,
                           }}
                         >
-                          {isAdminUser ? t("users.roleAdmin") : t("users.roleManager")}
+                          {roleLabel}
+
                         </span>
                         {/* 🔒 حالة ربط الجهاز — للمديرين على الأندرويد فقط */}
                         {!isAdminUser && u.os !== "ios" && (
@@ -720,7 +746,8 @@ export default function AdminUsers() {
                 <select value={superEditForm.role} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, role: e.target.value }))}
                   className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none"
                   style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }}>
-                  <option value="user">مدير فرع (user)</option>
+                  <option value="area_manager">مدير منطقة (area_manager)</option>
+                  <option value="branch_manager">مدير فرع (branch_manager)</option>
                   <option value="admin">أدمن (admin)</option>
                   <option value="superadmin">سوبر أدمن (superadmin)</option>
                 </select>
@@ -825,11 +852,12 @@ export default function AdminUsers() {
               <RoleSelector
                 value={form.role}
                 onChange={(v) => setForm((f) => ({ ...f, role: v }))}
+                isSuperAdmin={isSuperAdmin}
               />
             </Field>
 
             {/* نظام تشغيل الجهاز — يحدد المنصة المسموح بها ونوع الوصول */}
-            {form.role === "user" && (
+            {(form.role === "area_manager" || form.role === "branch_manager" || form.role === "user") && (
               <Field label="جهاز المدير" icon="devices">
                 <div className="grid grid-cols-2 gap-2">
                   {(["android", "ios"] as const).map((osOption) => {
@@ -1236,3 +1264,5 @@ export default function AdminUsers() {
     </div>
   );
 }
+
+

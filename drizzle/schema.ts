@@ -1,12 +1,18 @@
 import { decimal, int, index, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
+// ── Users ────────────────────────────────────────────────────────────────────
+// Roles:
+//   superadmin   → يرى الجميع، كامل الصلاحيات
+//   admin        → يرى area_manager + branch_manager فقط (لا يرى superadmin)
+//   area_manager → (كان "user") مدير منطقة، يشرف على مدراء الفروع
+//   branch_manager → جديد: مدير فرع، فرع واحد، زيارة واحدة يومياً، 8 ساعات
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   username: varchar("username", { length: 64 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
-  role: mysqlEnum("role", ["user", "admin", "superadmin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "superadmin", "area_manager", "branch_manager"]).default("area_manager").notNull(),
 
   // ── نظام التشغيل الخاص بالمدير ──────────────────────────────────────────────
   // android = يعمل فقط من التطبيق النيتف (لا ويب)
@@ -134,6 +140,14 @@ export const visits = mysqlTable("visits", {
   reviewedAt: timestamp("reviewedAt"),
   reviewedByUserId: int("reviewedByUserId"),
 
+  // ── بيانات تقييم الخروج (Checklist) ─────────────────────────────────────────
+  // JSON يُخزن نتيجة مودال التقييم الإلزامي عند الخروج (area_manager + branch_manager)
+  // مثال: {"uniform":4,"collections":true,"inventoryCount":false,"cleanliness":5,
+  //         "transfers":true,"transfersRating":3,"shortages":true,"shortageItems":["قهوة","شاي"],"audit":false}
+  visitChecklistData: text("visitChecklistData"),
+  // هل تم تسجيل الخروج تلقائياً (geofence) ولم يكتمل التقييم بعد؟
+  checklistPending: mysqlEnum("checklistPending", ["yes", "no"]).default("no").notNull(),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   // فهرس التاريخ الرئيسي — كل استعلامات السجل والتقارير بتمشي عليه
@@ -163,3 +177,26 @@ export const locationLogs = mysqlTable("locationLogs", {
 
 export type LocationLog = typeof locationLogs.$inferSelect;
 export type InsertLocationLog = typeof locationLogs.$inferInsert;
+
+// ── Area Manager Weekly Schedule ─────────────────────────────────────────────
+// جدول الجدولة الأسبوعية الشخصية لمدراء المناطق فقط
+// كل صف = مدير منطقة + فرع + يوم في الأسبوع + وقت اختياري
+export const areaManagerSchedules = mysqlTable("areaManagerSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  // managerId يشير إلى جدول managers (مش users مباشرة)
+  managerId: int("managerId").notNull(),
+  branchId: int("branchId").notNull(),
+  // 0=الأحد، 1=الإثنين، 2=الثلاثاء، 3=الأربعاء، 4=الخميس، 5=الجمعة، 6=السبت
+  dayOfWeek: int("dayOfWeek").notNull(),
+  // وقت الزيارة المخطط (HH:MM) اختياري
+  plannedTime: varchar("plannedTime", { length: 5 }),
+  // ملاحظة شخصية اختيارية
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("idx_schedule_manager_day").on(table.managerId, table.dayOfWeek),
+]);
+
+export type AreaManagerSchedule = typeof areaManagerSchedules.$inferSelect;
+export type InsertAreaManagerSchedule = typeof areaManagerSchedules.$inferInsert;

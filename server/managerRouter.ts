@@ -8,9 +8,11 @@ import path from "path";
 
 export const managerRouter = router({
   // GET — all managers with their user info (admin)
-  list: adminProcedure.query(async () => {
+  // السوبر أدمن يرى الجميع | الأدمن العادي لا يرى superadmin
+  list: adminProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("Database not available");
+    const isSuperAdmin = ctx.user?.role === 'superadmin';
     const result = await db
       .select({
         id: managers.id,
@@ -22,10 +24,11 @@ export const managerRouter = router({
         createdAt: managers.createdAt,
         userName: users.name,
         userEmail: users.email,
+        userRole: users.role,
       })
       .from(managers)
       .leftJoin(users, eq(managers.userId, users.id))
-      .where(ne(users.role, "superadmin"))
+      .where(isSuperAdmin ? undefined : ne(users.role, "superadmin"))
       .orderBy(users.name);
     return result;
   }),
@@ -74,6 +77,49 @@ export const managerRouter = router({
         )
       );
     return result;
+  }),
+
+  // GET — الفرع الوحيد المسند لمدير الفرع (branch_manager) — فرع واحد فقط
+  // يُستخدم في واجهة مدير الفرع لعرض بيانات الفرع المسند مباشرة
+  getBranchManagerBranch: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    // تأكد من أنه branch_manager
+    if (ctx.user!.role !== 'branch_manager') return null;
+
+    const managerResult = await db
+      .select()
+      .from(managers)
+      .where(eq(managers.userId, ctx.user!.id))
+      .limit(1);
+
+    if (!managerResult[0]) return null;
+
+    // جيب الفرع الأساسي (isPrimary = "yes") أو أول فرع مسند
+    const result = await db
+      .select({
+        id: branches.id,
+        name: branches.name,
+        code: branches.code,
+        address: branches.address,
+        latitude: branches.latitude,
+        longitude: branches.longitude,
+        geofenceRadiusMeters: branches.geofenceRadiusMeters,
+        isPrimary: managerBranches.isPrimary,
+      })
+      .from(managerBranches)
+      .innerJoin(branches, eq(managerBranches.branchId, branches.id))
+      .where(
+        and(
+          eq(managerBranches.managerId, managerResult[0].id),
+          eq(branches.isActive, "yes")
+        )
+      )
+      .orderBy(managerBranches.isPrimary) // isPrimary="yes" أولاً
+      .limit(1);
+
+    return result[0] ?? null;
   }),
 
   // POST — admin creates a manager profile for an existing user

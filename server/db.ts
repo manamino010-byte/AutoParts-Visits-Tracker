@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle, MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { InsertUser, users } from "../drizzle/schema";
+import * as schema from "../drizzle/schema";
 
 // ── Connection Pool (يحل مشكلة الـ timeout من Railway) ──────────────────────
 let _pool: mysql.Pool | null = null;
-let _db: any = null;
+let _db: MySql2Database<typeof schema> | null = null;
 
 function createPool() {
   if (!process.env.DATABASE_URL) return null;
@@ -29,12 +30,12 @@ function createPool() {
   }
 }
 
-export async function getDb(): Promise<any> {
+export async function getDb(): Promise<MySql2Database<typeof schema> | null> {
   if (!_db) {
     if (!_pool) _pool = createPool();
     if (_pool) {
       try {
-        _db = drizzle(_pool) as any;
+        _db = drizzle(_pool, { schema });
         console.log("[Database] ✅ Pool connected");
       } catch (error) {
         console.warn("[Database] Failed to init drizzle:", error);
@@ -103,15 +104,16 @@ export async function updateLastSignedIn(id: number): Promise<void> {
 }
 
 // ── Admin: list all users ─────────────────────────────────────────────────────
-export async function listUsers() {
+// isSuperAdmin=true → يرى الجميع بما فيهم superadmin
+// isSuperAdmin=false (default) → يُخفي السوبر أدمن من القائمة
+export async function listUsers(isSuperAdmin = false) {
   return withRetry(async () => {
     const db = await getDb();
     if (!db) return [];
     
-    // We import ne dynamically to avoid circular dependencies or just use sql
     const { ne } = await import("drizzle-orm");
     
-    return db.select({
+    const query = db.select({
       id: users.id,
       username: users.username,
       name: users.name,
@@ -125,7 +127,13 @@ export async function listUsers() {
       deviceBoundAt: users.deviceBoundAt,
       boundWebFingerprint: users.boundWebFingerprint,
       webFingerprintAt: users.webFingerprintAt,
-    }).from(users).where(ne(users.role, "superadmin")).orderBy(users.name);
+    }).from(users).orderBy(users.name);
+
+    if (!isSuperAdmin) {
+      // الأدمن العادي لا يرى السوبر أدمن نهائياً
+      return query.where(ne(users.role, "superadmin"));
+    }
+    return query;
   });
 }
 

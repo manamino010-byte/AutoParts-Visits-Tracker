@@ -27,6 +27,8 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+// ── Admin Procedure — admin + superadmin ──────────────────────────────────────
+// area_manager لا يملك صلاحيات الأدمن
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
@@ -44,12 +46,68 @@ export const adminProcedure = t.procedure.use(
   }),
 );
 
+// ── SuperAdmin Procedure — superadmin only ────────────────────────────────────
 export const superAdminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
     if (!ctx.user || ctx.user.role !== 'superadmin') {
       throw new TRPCError({ code: "FORBIDDEN", message: "Superadmin access required" });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
+    });
+  }),
+);
+
+// ── Area Manager Procedure — area_manager فقط (مدير المنطقة) ─────────────────
+export const areaManagerProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    if (!ctx.user || (ctx.user.role !== 'area_manager' && ctx.user.role !== 'user')) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "صلاحية مدير المنطقة مطلوبة" });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
+    });
+  }),
+);
+
+// ── Branch Manager Procedure — branch_manager فقط (مدير الفرع) ───────────────
+export const branchManagerProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    if (!ctx.user || ctx.user.role !== 'branch_manager') {
+      throw new TRPCError({ code: "FORBIDDEN", message: "صلاحية مدير الفرع مطلوبة" });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
+    });
+  }),
+);
+
+// ── Field Manager Procedure — area_manager أو branch_manager (كلاهما يسجل زيارات) ─
+export const fieldManagerProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    const allowed = ['area_manager', 'branch_manager', 'user'];
+    if (!ctx.user || !allowed.includes(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "صلاحية مدير ميداني مطلوبة" });
     }
 
     return next({

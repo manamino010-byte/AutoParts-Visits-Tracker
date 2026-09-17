@@ -18,6 +18,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminLiveTracking from "./pages/AdminLiveTracking";
 import SyncPage from "./pages/SyncPage";
 import ManagerReports from "./pages/ManagerReports";
+import AreaManagerSchedule from "./pages/AreaManagerSchedule";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { useGeofence } from "./hooks/useGeofence";
 import { LocationPermissionGuide } from "./components/LocationPermissionGuide";
@@ -79,6 +80,9 @@ function ProtectedRouter() {
   }
 
   const isAdmin = user.role === "admin" || user.role === "superadmin";
+  // area_manager = مدير المنطقة (الدور القديم "user" مُعاد تسميته)
+  // branch_manager = مدير فرع جديد — نفس الواجهة المحمولة مع قيود مختلفة
+  const isFieldManager = user.role === "area_manager" || user.role === "branch_manager" || user.role === "user";
 
   // ── Admin / Superadmin: white card layout ─────────────────────────────────
   if (isAdmin) {
@@ -98,21 +102,29 @@ function ProtectedRouter() {
     );
   }
 
-  // ── Manager: dark mobile layout — NO DashboardLayout wrapper ──────────────
-  const managerRoutes = (
-    <Switch>
-      <Route path="/" component={ManagerDashboard} />
-      <Route path="/dashboard" component={ManagerDashboard} />
-      <Route path="/check-in" component={BranchCheckIn} />
-      <Route path="/history" component={VisitHistory} />
-      <Route path="/reports" component={ManagerReports} />
-      <Route path="/sync" component={SyncPage} />
-      <Route component={NotFound} />
-    </Switch>
-  );
+  // ── Area Manager / Branch Manager: dark mobile layout ─────────────────────
+  if (isFieldManager) {
+    const managerRoutes = (
+      <Switch>
+        <Route path="/" component={ManagerDashboard} />
+        <Route path="/dashboard" component={ManagerDashboard} />
+        <Route path="/check-in" component={BranchCheckIn} />
+        <Route path="/history" component={VisitHistory} />
+        <Route path="/reports" component={ManagerReports} />
+        <Route path="/sync" component={SyncPage} />
+        {/* جدول الزيارات الأسبوعي — متاح لمدير المنطقة فقط، الصفحة تتحقق من الدور */}
+        <Route path="/schedule" component={AreaManagerSchedule} />
+        <Route component={NotFound} />
+      </Switch>
+    );
 
-  return <ManagerGeofenceProvider>{managerRoutes}</ManagerGeofenceProvider>;
+    return <ManagerGeofenceProvider>{managerRoutes}</ManagerGeofenceProvider>;
+  }
+
+  // Fallback
+  return <LoginPage />;
 }
+
 
 function App() {
   return (

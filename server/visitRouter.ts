@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { eq, and, or, ne, gte, lte, desc, count, sql } from "drizzle-orm";
 import { router, protectedProcedure, adminProcedure, superAdminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
@@ -254,13 +254,16 @@ export const visitRouter = router({
         return { success: true, skipped: true };
       }
 
-      const result = await finalizeCheckOut(db, manager.id, activeVisit[0], new Date());
+      // isAutoCheckout=true → يضبط checklistPending='yes' عشان يُشعر المدير بإتمام التقييم
+      const result = await finalizeCheckOut(db, manager.id, activeVisit[0], new Date(), true);
 
       return {
         success: true,
         skipped: false,
         durationMin: Math.round(result.durationMin),
         distanceRecorded: result.distanceKm,
+        // ✅ نُبلغ الكلاينت أن التقييم معلق عشان يعرض إشعاراً
+        checklistPending: true,
       };
     }),
 
@@ -814,4 +817,84 @@ export const visitRouter = router({
         .offset(input.offset);
       return { items, total };
     }),
+
+  // ── POST — تسليم تقييم الخروج الإلزامي (Checkout Checklist) ────────────────
+  // يُستدعى بعد الخروج اليدوي أو بعد إشعار الخروج التلقائي
+  // يحفظ بيانات التقييم في visitChecklistData ويُصفّي checklistPending
+  submitCheckoutChecklist: protectedProcedure
+    .input(z.object({
+      visitId: z.number().int().positive(),
+      // بيانات التقييم كـ JSON object
+      uniform: z.number().int().min(1).max(5),
+      collections: z.boolean(),
+      inventoryCount: z.boolean(),
+      cleanliness: z.number().int().min(1).max(5),
+      transfers: z.boolean(),
+      transfersRating: z.number().int().min(1).max(5).optional(), // فقط لو transfers=true
+      shortages: z.boolean(),
+      shortageItems: z.array(z.string().max(200)).max(50).optional(), // فقط لو shortages=true
+      audit: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const managerResult = await db.select({ id: managers.id })
+        .from(managers)
+        .where(eq(managers.userId, ctx.user!.id))
+        .limit(1);
+      if (!managerResult[0]) throw new Error("Manager profile not found");
+
+      const { visitId, ...checklistData } = input;
+
+      // تأكد إن الزيارة تخص هذا المدير وانتهت (checked_out)
+      const visitResult = await db.select({ id: visits.id })
+        .from(visits)
+        .where(and(
+          eq(visits.id, visitId),
+          eq(visits.managerId, managerResult[0].id),
+        ))
+        .limit(1);
+
+      if (!visitResult[0]) throw new Error("Visit not found");
+
+      await db.update(visits).set({
+        visitChecklistData: JSON.stringify(checklistData),
+        checklistPending: "no",
+      }).where(eq(visits.id, visitId));
+
+      return { success: true };
+    }),
+
+  // ── GET — الزيارة الأخيرة التي لها تقييم معلق (checklistPending=yes) ────────
+  // تُستخدم لعرض تذكير التقييم للمدير بعد الخروج التلقائي أو عند دخول فرع جديد
+  getPendingChecklist: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    const managerResult = await db.select({ id: managers.id })
+      .from(managers)
+      .where(eq(managers.userId, ctx.user!.id))
+      .limit(1);
+    if (!managerResult[0]) return null;
+
+    const result = await db.select({
+      id: visits.id,
+      checkInAt: visits.checkInAt,
+      checkOutAt: visits.checkOutAt,
+      branchName: branches.name,
+      branchId: branches.id,
+    }).from(visits)
+      .leftJoin(branches, eq(visits.branchId, branches.id))
+      .where(and(
+        eq(visits.managerId, managerResult[0].id),
+        eq(visits.checklistPending, "yes"),
+        eq(visits.status, "checked_out"),
+      ))
+      .orderBy(desc(visits.checkOutAt))
+      .limit(1);
+
+    return result[0] ?? null;
+  }),
 });
+

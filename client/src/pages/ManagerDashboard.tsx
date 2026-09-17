@@ -1,4 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+﻿import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -15,6 +15,17 @@ function formatDuration(ms: number): string {
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
+
+  const isBranchManager = user?.role === 'branch_manager';
+
+  // Branch manager: fetch single assigned branch
+  const { data: branchManagerBranch } = trpc.manager.getBranchManagerBranch.useQuery(undefined, {
+    enabled: isBranchManager,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 8-hour work target for branch managers (480 min)
+  const TARGET_WORK_MINUTES = 480;
   // صورة المدير بتتخزن في جدول managers مش users
   const { data: managerProfile } = trpc.manager.getCurrentManager.useQuery();
   const photoUrl = managerProfile?.photoUrl ?? null;
@@ -346,23 +357,48 @@ export default function ManagerDashboard() {
 
 
         {/* ── 📊 إحصائيات اليوم — من الداتا الحقيقية ────────────────────────── */}
+                {/* Stats Grid */}
         <div className="stats-grid fade-up" style={{ animationDelay: '0.2s' }}>
-          <div className="stat-card">
-            <div className="stat-header">
-              <span>زيارات اليوم</span>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>place</span>
+          {/* Card 1: Visits or 8h timer */}
+          {isBranchManager ? (
+            <div className="stat-card" style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.07)' }}>
+              <div className="stat-header">
+                <span>ساعات العمل</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>timer</span>
+              </div>
+              <div className="stat-value" style={{ color: activeVisit ? '#6366f1' : 'rgba(255,255,255,0.4)' }}>
+                {activeVisit ? activeVisitDuration : '--'}
+                <span className="stat-unit"> / 8 س</span>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-progress" style={{
+                  width: `${activeVisit ? Math.min(100, Math.round(((now - new Date(activeVisit.checkInAt).getTime()) / 60_000 / 480) * 100)) : 0}%`,
+                  background: '#6366f1',
+                }} />
+              </div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                {branchManagerBranch ? `فرعك: ${(branchManagerBranch as any).name}` : 'لم تبدأ بعد'}
+              </span>
             </div>
-            <div className="stat-value">
-              {visitsToday} <span className="stat-unit">من {branches.length}</span>
+          ) : (
+            <div className="stat-card">
+              <div className="stat-header">
+                <span>زيارات اليوم</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>place</span>
+              </div>
+              <div className="stat-value">
+                {visitsToday} <span className="stat-unit">من {branches.length}</span>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-progress" style={{ width: `${progressPct}%` }} />
+              </div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                فروعك المسندة النهاردة
+              </span>
             </div>
-            <div className="stat-bar">
-              <div className="stat-progress" style={{ width: `${progressPct}%` }} />
-            </div>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
-              فروعك المسندة النهاردة
-            </span>
-          </div>
+          )}
 
+          {/* Card 2: Distance */}
           <div className="stat-card">
             <div className="stat-header">
               <span>المسافة</span>
@@ -372,18 +408,14 @@ export default function ManagerDashboard() {
               {distanceTodayKm.toFixed(1)} <span className="stat-unit">كم</span>
             </div>
             <div className="stat-bar">
-              <div
-                className="stat-progress"
-                style={{
-                  width: `${Math.min(100, Math.round((distanceTodayKm / 100) * 100))}%`,
-                  background: '#0fa5f8',
-                }}
-              />
+              <div className="stat-progress" style={{
+                width: `${Math.min(100, Math.round((distanceTodayKm / 100) * 100))}%`,
+                background: '#0fa5f8',
+              }} />
             </div>
             <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>إجمالي تحركاتك اليوم</span>
           </div>
         </div>
-
         <div className="actions-list fade-up" style={{ animationDelay: '0.3s' }}>
           <Link href="/check-in" className="action-item">
             <div className="action-icon">
@@ -413,3 +445,5 @@ export default function ManagerDashboard() {
     </>
   );
 }
+
+

@@ -16,11 +16,13 @@ export interface VisitForCheckout {
 
 // ── 🎯 الدالة الموحدة لإغلاق زيارة (كانت منسوخة 3 مرات — دلوقتي مرة واحدة) ──
 // بتستخدمها: checkOut + nativeCheckOut + syncOfflineVisits
+// isAutoCheckout=true → خروج تلقائي بالجيوفنس → يضبط checklistPending='yes' للإشعار اللاحق
 export async function finalizeCheckOut(
   db: Db,
   managerId: number,
   visit: VisitForCheckout,
   checkOutTime: Date,
+  isAutoCheckout = false,
 ): Promise<{ durationMin: number; distanceKm: number | null; isTeleporting: boolean; distanceEstimated: boolean }> {
   const durationMin = (checkOutTime.getTime() - visit.checkInAt.getTime()) / 60_000;
 
@@ -86,6 +88,9 @@ export async function finalizeCheckOut(
       suspicionScore: finalScore,
       mockReasons: JSON.stringify(newReasons),
     } : {}),
+    // ── إذا كان الخروج تلقائياً (geofence) → اضبط التقييم كـ معلق ──────────────
+    // سيُعرض للمدير إشعار ليُكمل تقرير الزيارة لاحقاً
+    ...(isAutoCheckout ? { checklistPending: "yes" as const } : {}),
   }).where(and(
     eq(visits.id, visit.id),
     eq(visits.managerId, managerId),
